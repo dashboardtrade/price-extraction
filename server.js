@@ -14,7 +14,7 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-async function generateCandles() {
+async function updateCandles() {
   const timeframes = [
     { name: '4H', interval: 240, limit: 100, table: 'candles_4h' },
     { name: '1H', interval: 60, limit: 168, table: 'candles_1h' },
@@ -25,42 +25,99 @@ async function generateCandles() {
   const results = {};
 
   for (const tf of timeframes) {
-    const candles = [];
-    const now = Math.floor(Date.now() / 1000);
-    const intervalSeconds = tf.interval * 60;
-    const currentTime = Math.floor(now / intervalSeconds) * intervalSeconds;
+    try {
+      // Check existing candles count
+      const { count } = await supabase
+        .from(tf.table)
+        .select('*', { count: 'exact', head: true });
 
-    for (let i = tf.limit - 1; i >= 0; i--) {
-      const time = currentTime - (i * intervalSeconds);
-      const price = 96000 + (Math.random() - 0.5) * 1000;
-      const volatility = 0.01;
-      
-      const open = price * (1 + (Math.random() - 0.5) * volatility);
-      const close = open * (1 + (Math.random() - 0.5) * volatility);
-      const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5);
-      const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5);
-      const volume = Math.floor(Math.random() * 1000000) + 500000;
+      if (count < tf.limit) {
+        // Generate initial candles if not enough
+        const candles = [];
+        const now = Math.floor(Date.now() / 1000);
+        const intervalSeconds = tf.interval * 60;
+        const currentTime = Math.floor(now / intervalSeconds) * intervalSeconds;
 
-      candles.push({
-        time,
-        open: Math.round(open * 100) / 100,
-        high: Math.round(high * 100) / 100,
-        low: Math.round(low * 100) / 100,
-        close: Math.round(close * 100) / 100,
-        volume,
-        symbol: 'BTCUSDT'
-      });
-    }
+        for (let i = tf.limit - 1; i >= 0; i--) {
+          const time = currentTime - (i * intervalSeconds);
+          const price = 96000 + (Math.random() - 0.5) * 1000;
+          const volatility = 0.01;
+          
+          const open = price * (1 + (Math.random() - 0.5) * volatility);
+          const close = open * (1 + (Math.random() - 0.5) * volatility);
+          const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5);
+          const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5);
+          const volume = Math.floor(Math.random() * 1000000) + 500000;
 
-    // Store in Supabase
-    const { error } = await supabase
-      .from(tf.table)
-      .upsert(candles, { onConflict: 'time,symbol' });
+          candles.push({
+            time,
+            open: Math.round(open * 100) / 100,
+            high: Math.round(high * 100) / 100,
+            low: Math.round(low * 100) / 100,
+            close: Math.round(close * 100) / 100,
+            volume,
+            symbol: 'BTCUSDT'
+          });
+        }
 
-    if (error) {
+        await supabase.from(tf.table).upsert(candles, { onConflict: 'time,symbol' });
+        results[tf.name] = `${candles.length} initial candles created`;
+      } else {
+        // Only add new current candle
+        const { data: latest } = await supabase
+          .from(tf.table)
+          .select('time')
+          .order('time', { ascending: false })
+          .limit(1);
+
+        const now = Math.floor(Date.now() / 1000);
+        const intervalSeconds = tf.interval * 60;
+        const currentTime = Math.floor(now / intervalSeconds) * intervalSeconds;
+
+        if (!latest || currentTime > latest[0].time) {
+          // Create new candle
+          const price = 96000 + (Math.random() - 0.5) * 1000;
+          const volatility = 0.01;
+          
+          const open = price * (1 + (Math.random() - 0.5) * volatility);
+          const close = open * (1 + (Math.random() - 0.5) * volatility);
+          const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5);
+          const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5);
+          const volume = Math.floor(Math.random() * 1000000) + 500000;
+
+          const newCandle = {
+            time: currentTime,
+            open: Math.round(open * 100) / 100,
+            high: Math.round(high * 100) / 100,
+            low: Math.round(low * 100) / 100,
+            close: Math.round(close * 100) / 100,
+            volume,
+            symbol: 'BTCUSDT'
+          };
+
+          await supabase.from(tf.table).insert([newCandle]);
+          
+          // Keep only latest candles (remove old ones)
+          const { data: allCandles } = await supabase
+            .from(tf.table)
+            .select('time')
+            .order('time', { ascending: false });
+
+          if (allCandles.length > tf.limit) {
+            const oldestToKeep = allCandles[tf.limit - 1].time;
+            await supabase
+              .from(tf.table)
+              .delete()
+              .lt('time', oldestToKeep);
+          }
+
+          results[tf.name] = '1 new candle added';
+        } else {
+          results[tf.name] = 'No new candle needed';
+        }
+      }
+    } catch (error) {
       results[tf.name] = `Error: ${error.message}`;
-    } else {
-      results[tf.name] = `${candles.length} candles stored`;
     }
   }
 
@@ -69,7 +126,7 @@ async function generateCandles() {
 
 app.get('/extract', async (req, res) => {
   try {
-    const results = await generateCandles();
+    const results = await updateCandles();
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -126,7 +183,7 @@ app.get('/', (req, res) => {
 // Auto-update every minute
 setInterval(async () => {
   try {
-    await generateCandles();
+    await updateCandles();
   } catch (error) {
     console.error('Auto-update error:', error);
   }
@@ -134,5 +191,5 @@ setInterval(async () => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  generateCandles(); // Initial run
+  updateCandles(); // Initial run
 });
