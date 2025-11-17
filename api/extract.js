@@ -17,9 +17,12 @@ async function extractCandleData() {
   ];
 
   const candleData = {};
+  const errors = [];
 
   for (const tf of timeframes) {
     try {
+      console.log(`Fetching ${tf.name} data from Binance...`);
+      
       const response = await axios.get(BINANCE_API, {
         params: {
           symbol: 'BTCUSDT',
@@ -39,9 +42,12 @@ async function extractCandleData() {
       }));
 
       candleData[tf.name] = candles;
+      console.log(`✅ ${tf.name}: ${candles.length} candles fetched`);
+      
     } catch (error) {
-      console.error(`Error extracting ${tf.name}:`, error.message);
+      console.error(`❌ Error extracting ${tf.name}:`, error.message);
       candleData[tf.name] = [];
+      errors.push(`${tf.name}: ${error.message}`);
     }
   }
 
@@ -53,33 +59,64 @@ async function extractCandleData() {
     '1min': 'candles_1min'
   };
 
+  const storageResults = {};
+
   for (const [timeframe, candles] of Object.entries(candleData)) {
     const tableName = tableMap[timeframe];
-    if (!tableName || candles.length === 0) continue;
+    if (!tableName || candles.length === 0) {
+      storageResults[timeframe] = 'No data to store';
+      continue;
+    }
 
-    await supabase
-      .from(tableName)
-      .upsert(candles, { 
-        onConflict: 'time,symbol',
-        ignoreDuplicates: true 
-      });
+    try {
+      console.log(`Storing ${candles.length} ${timeframe} candles in ${tableName}...`);
+      
+      const { data, error } = await supabase
+        .from(tableName)
+        .upsert(candles, { 
+          onConflict: 'time,symbol',
+          ignoreDuplicates: true 
+        });
+
+      if (error) {
+        console.error(`❌ Supabase error for ${timeframe}:`, error);
+        storageResults[timeframe] = `Error: ${error.message}`;
+        errors.push(`${timeframe} storage: ${error.message}`);
+      } else {
+        console.log(`✅ ${timeframe}: Stored successfully`);
+        storageResults[timeframe] = 'Stored successfully';
+      }
+      
+    } catch (error) {
+      console.error(`❌ Storage error for ${timeframe}:`, error);
+      storageResults[timeframe] = `Error: ${error.message}`;
+      errors.push(`${timeframe} storage: ${error.message}`);
+    }
   }
 
-  return candleData;
+  return { candleData, storageResults, errors };
 }
 
 module.exports = async (req, res) => {
   try {
-    const candleData = await extractCandleData();
+    console.log('🚀 Starting candle extraction...');
+    
+    const result = await extractCandleData();
+    
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
-      data: candleData
+      data: result.candleData,
+      storage: result.storageResults,
+      errors: result.errors
     });
+    
   } catch (error) {
+    console.error('❌ Main extraction error:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };
