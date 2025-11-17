@@ -173,10 +173,65 @@ app.get('/latest', async (req, res) => {
   }
 });
 
+app.get('/range', async (req, res) => {
+  try {
+    const { from, to, timeframe } = req.query;
+    
+    if (!from || !to || !timeframe) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing parameters. Use: /range?from=1234567890&to=1234567890&timeframe=1min'
+      });
+    }
+
+    const tables = {
+      '4H': 'candles_4h',
+      '1H': 'candles_1h',
+      '15min': 'candles_15min',
+      '1min': 'candles_1min'
+    };
+
+    const table = tables[timeframe];
+    if (!table) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid timeframe. Use: 4H, 1H, 15min, or 1min'
+      });
+    }
+
+    const { data: candles } = await supabase
+      .from(table)
+      .select('*')
+      .gte('time', parseInt(from))
+      .lte('time', parseInt(to))
+      .order('time', { ascending: true });
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      timeframe,
+      from: parseInt(from),
+      to: parseInt(to),
+      count: candles?.length || 0,
+      data: candles || []
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Price Extraction Server',
-    endpoints: ['/extract', '/latest']
+    endpoints: [
+      '/extract - Generate/update candles',
+      '/latest - Get all candles', 
+      '/range?from=1234567890&to=1234567890&timeframe=1min - Get candles between timestamps'
+    ]
   });
 });
 
