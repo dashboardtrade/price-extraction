@@ -89,9 +89,9 @@ async function extractCandleData() {
     }
 
     // Store in Supabase
-    await storeCandleData(candleData);
+    const storage = await storeCandleData(candleData);
     
-    return candleData;
+    return { candleData, storage };
 
   } catch (error) {
     console.error('❌ Error extracting candle data:', error);
@@ -109,27 +109,38 @@ async function storeCandleData(candleData) {
       '1min': 'candles_1min'
     };
 
+    const storage = {};
+
     for (const [timeframe, candles] of Object.entries(candleData)) {
       const tableName = tableMap[timeframe];
       if (!tableName) continue;
 
-      // Insert candles with upsert to avoid duplicates
-      const { data, error } = await supabase
-        .from(tableName)
-        .upsert(candles, { 
-          onConflict: 'time,symbol',
-          ignoreDuplicates: true 
-        });
+      try {
+        // Insert candles with proper upsert
+        const { data, error } = await supabase
+          .from(tableName)
+          .upsert(candles, { 
+            onConflict: 'time,symbol'
+          });
 
-      if (error) {
-        console.error(`❌ Error storing ${timeframe}:`, error);
-      } else {
-        console.log(`✅ ${timeframe}: ${candles.length} candles stored`);
+        if (error) {
+          console.error(`❌ Error storing ${timeframe}:`, error);
+          storage[timeframe] = `Error: ${error.message}`;
+        } else {
+          console.log(`✅ ${timeframe}: ${candles.length} candles stored`);
+          storage[timeframe] = "Stored successfully";
+        }
+      } catch (err) {
+        console.error(`❌ Exception storing ${timeframe}:`, err);
+        storage[timeframe] = `Exception: ${err.message}`;
       }
     }
 
+    return storage;
+
   } catch (error) {
     console.error('❌ Error storing candle data:', error);
+    return { error: error.message };
   }
 }
 
@@ -148,11 +159,12 @@ app.get('/health', (req, res) => {
 
 app.get('/extract', async (req, res) => {
   try {
-    const candleData = await extractCandleData();
+    const result = await extractCandleData();
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
-      data: candleData
+      data: result.candleData,
+      storage: result.storage
     });
   } catch (error) {
     res.status(500).json({
