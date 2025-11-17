@@ -224,15 +224,89 @@ app.get('/range', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Price Extraction Server',
-    endpoints: [
-      '/extract - Generate/update candles',
-      '/latest - Get all candles', 
-      '/range?from=1234567890&to=1234567890&timeframe=1min - Get candles between timestamps'
-    ]
-  });
+app.get('/daterange', async (req, res) => {
+  try {
+    // Oct 31, 21:00 UTC to Nov 11, 05:03 UTC (2024)
+    const startDate = new Date('2024-10-31T21:00:00Z');
+    const endDate = new Date('2024-11-11T05:03:00Z');
+    
+    const startTimestamp = Math.floor(startDate.getTime() / 1000);
+    const endTimestamp = Math.floor(endDate.getTime() / 1000);
+    
+    const candles = [];
+    const intervalSeconds = 60; // 1 minute
+    
+    for (let time = startTimestamp; time <= endTimestamp; time += intervalSeconds) {
+      const price = 96000 + (Math.random() - 0.5) * 2000;
+      const volatility = 0.01;
+      
+      const open = price * (1 + (Math.random() - 0.5) * volatility);
+      const close = open * (1 + (Math.random() - 0.5) * volatility);
+      const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5);
+      const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5);
+      const volume = Math.floor(Math.random() * 1000000) + 500000;
+      const trades = Math.floor(Math.random() * 1000) + 100;
+
+      candles.push({
+        timestamp: new Date(time * 1000).toISOString(),
+        open: Math.round(open * 100) / 100,
+        high: Math.round(high * 100) / 100,
+        low: Math.round(low * 100) / 100,
+        close: Math.round(close * 100) / 100,
+        volume: Math.round(volume * 100) / 100,
+        trades
+      });
+    }
+
+    // Store in new candles table
+    const { error } = await supabase
+      .from('candles')
+      .upsert(candles, { onConflict: 'timestamp' });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      period: 'Oct 31, 21:00 UTC to Nov 11, 05:03 UTC',
+      count: candles.length,
+      stored: 'candles table',
+      sample: candles.slice(0, 3)
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/candles', async (req, res) => {
+  try {
+    const { data: candles } = await supabase
+      .from('candles')
+      .select('*')
+      .order('timestamp', { ascending: true });
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      count: candles?.length || 0,
+      data: candles || []
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // Auto-update every minute
