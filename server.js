@@ -72,24 +72,33 @@ async function extractCandleData() {
   }
 }
 
-// Store candle data in Supabase
+// Store candle data in separate Supabase tables
 async function storeCandleData(candleData) {
   try {
-    const timestamp = new Date().toISOString();
-    
-    const { data, error } = await supabase
-      .from('candle_data')
-      .insert({
-        timestamp,
-        timeframes: candleData,
-        symbol: 'BTCUSDT',
-        source: 'binance'
-      });
+    const tableMap = {
+      '4H': 'candles_4h',
+      '1H': 'candles_1h', 
+      '15min': 'candles_15min',
+      '1min': 'candles_1min'
+    };
 
-    if (error) {
-      console.error('❌ Supabase error:', error);
-    } else {
-      console.log('✅ Candle data stored in Supabase');
+    for (const [timeframe, candles] of Object.entries(candleData)) {
+      const tableName = tableMap[timeframe];
+      if (!tableName) continue;
+
+      // Insert candles with upsert to avoid duplicates
+      const { data, error } = await supabase
+        .from(tableName)
+        .upsert(candles, { 
+          onConflict: 'time,symbol',
+          ignoreDuplicates: true 
+        });
+
+      if (error) {
+        console.error(`❌ Error storing ${timeframe}:`, error);
+      } else {
+        console.log(`✅ ${timeframe}: ${candles.length} candles stored`);
+      }
     }
 
   } catch (error) {
@@ -128,19 +137,41 @@ app.get('/extract', async (req, res) => {
 
 app.get('/latest', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('candle_data')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(1);
+    const tableMap = {
+      '4H': 'candles_4h',
+      '1H': 'candles_1h',
+      '15min': 'candles_15min', 
+      '1min': 'candles_1min'
+    };
 
-    if (error) {
-      throw error;
+    const limits = {
+      '4H': 100,
+      '1H': 168,
+      '15min': 200,
+      '1min': 1440
+    };
+
+    const candleData = {};
+
+    for (const [timeframe, tableName] of Object.entries(tableMap)) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('time, open, high, low, close, volume')
+        .order('time', { ascending: false })
+        .limit(limits[timeframe]);
+
+      if (error) {
+        console.error(`❌ Error fetching ${timeframe}:`, error);
+        candleData[timeframe] = [];
+      } else {
+        candleData[timeframe] = data.reverse(); // Reverse to get chronological order
+      }
     }
 
     res.json({
       success: true,
-      data: data[0] || null
+      timestamp: new Date().toISOString(),
+      data: candleData
     });
 
   } catch (error) {

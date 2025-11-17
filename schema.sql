@@ -1,21 +1,58 @@
--- Create candle_data table in Supabase
-CREATE TABLE IF NOT EXISTS candle_data (
+-- Create separate tables for each timeframe
+CREATE TABLE IF NOT EXISTS candles_4h (
     id BIGSERIAL PRIMARY KEY,
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    time BIGINT NOT NULL,
+    open DECIMAL(20,8) NOT NULL,
+    high DECIMAL(20,8) NOT NULL,
+    low DECIMAL(20,8) NOT NULL,
+    close DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(20,8) NOT NULL,
     symbol VARCHAR(20) NOT NULL DEFAULT 'BTCUSDT',
-    source VARCHAR(20) NOT NULL DEFAULT 'binance',
-    timeframes JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(time, symbol)
 );
 
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_candle_data_timestamp ON candle_data(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_candle_data_symbol ON candle_data(symbol);
+CREATE TABLE IF NOT EXISTS candles_1h (
+    id BIGSERIAL PRIMARY KEY,
+    time BIGINT NOT NULL,
+    open DECIMAL(20,8) NOT NULL,
+    high DECIMAL(20,8) NOT NULL,
+    low DECIMAL(20,8) NOT NULL,
+    close DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(20,8) NOT NULL,
+    symbol VARCHAR(20) NOT NULL DEFAULT 'BTCUSDT',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(time, symbol)
+);
 
--- Example of timeframes JSONB structure:
--- {
---   "4H": [{"time": 1700000000, "open": 95000, "high": 95500, "low": 94500, "close": 95200, "volume": 1000}],
---   "1H": [...],
---   "15min": [...],
---   "1min": [...]
--- }
+CREATE TABLE IF NOT EXISTS candles_15min (
+    id BIGSERIAL PRIMARY KEY,
+    time BIGINT NOT NULL,
+    open DECIMAL(20,8) NOT NULL,
+    high DECIMAL(20,8) NOT NULL,
+    low DECIMAL(20,8) NOT NULL,
+    close DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(20,8) NOT NULL,
+    symbol VARCHAR(20) NOT NULL DEFAULT 'BTCUSDT',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(time, symbol)
+);
+
+CREATE TABLE IF NOT EXISTS candles_1min (
+    id BIGSERIAL PRIMARY KEY,
+    time BIGINT NOT NULL,
+    open DECIMAL(20,8) NOT NULL,
+    high DECIMAL(20,8) NOT NULL,
+    low DECIMAL(20,8) NOT NULL,
+    close DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(20,8) NOT NULL,
+    symbol VARCHAR(20) NOT NULL DEFAULT 'BTCUSDT',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(time, symbol)
+);
+
+-- Create indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_candles_4h_time ON candles_4h(time DESC);
+CREATE INDEX IF NOT EXISTS idx_candles_1h_time ON candles_1h(time DESC);
+CREATE INDEX IF NOT EXISTS idx_candles_15min_time ON candles_15min(time DESC);
+CREATE INDEX IF NOT EXISTS idx_candles_1min_time ON candles_1min(time DESC);
