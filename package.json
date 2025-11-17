@@ -1,7 +1,7 @@
 {
   "name": "price-extraction-server",
-  "version": "1.0.0",
-  "description": "TradingView candle data extraction server",
+  "version": "1.0.1",
+  "description": "TradingView candle data extraction server for Vercel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
