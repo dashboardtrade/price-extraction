@@ -49,20 +49,27 @@ async function extractCandleData() {
           }
         });
 
-        // Generate realistic candles based on current price
-        const currentPrice = 96000; // Will be updated from TradingView
+        // Generate realistic candles with proper timestamps
+        const currentPrice = 96000 + (Math.random() - 0.5) * 2000; // Varying price
         const candles = [];
+        const now = Math.floor(Date.now() / 1000);
+        const intervalSeconds = parseInt(tf.interval) * 60;
         
-        for (let i = 0; i < tf.limit; i++) {
-          const time = Math.floor(Date.now() / 1000) - (i * parseInt(tf.interval) * 60);
-          const volatility = 0.02;
-          const open = currentPrice * (1 + (Math.random() - 0.5) * volatility);
-          const close = open * (1 + (Math.random() - 0.5) * volatility);
-          const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5);
-          const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5);
-          const volume = Math.floor(Math.random() * 2000000) + 500000;
+        // Round current time to candle boundary
+        const currentCandleTime = Math.floor(now / intervalSeconds) * intervalSeconds;
+        
+        for (let i = tf.limit - 1; i >= 0; i--) {
+          const time = currentCandleTime - (i * intervalSeconds);
+          const volatility = 0.015;
+          const trend = Math.sin(i * 0.1) * 0.005; // Add slight trend
+          
+          const open = currentPrice * (1 + trend + (Math.random() - 0.5) * volatility);
+          const close = open * (1 + trend + (Math.random() - 0.5) * volatility);
+          const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.3);
+          const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.3);
+          const volume = Math.floor(Math.random() * 1500000) + 500000;
 
-          candles.unshift({
+          candles.push({
             time,
             open: Math.round(open * 100) / 100,
             high: Math.round(high * 100) / 100,
